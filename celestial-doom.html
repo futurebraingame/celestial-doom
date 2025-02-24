@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Celestial Doom</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+    }
+    canvas {
+      display: block;
+    }
+    #instructions {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      font-family: Arial, sans-serif;
+      max-width: 300px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <div id="instructions">
+    <h3>Controls:</h3>
+    <p>WASD / Arrow Keys: Move</p>
+    <p>Mouse: Aim</p>
+    <p>Click: Shoot</p>
+    <p>1-3: Switch weapons</p>
+    <p>(Click anywhere to start)</p>
+  </div>
+  
+  <script>
+    // Celestial Doom - A Divine FPS
+    // A DOOM-inspired game set during a civil war in heaven
+
+    // Main game class
+    class CelestialDoom {
+      constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.width = this.canvas.width = window.innerWidth;
+        this.height = this.canvas.height = window.innerHeight;
+        
+        // Game state
+        this.player = {
+          x: this.width / 2,
+          y: this.height / 2,
+          angle: 0,
+          health: 100,
+          armor: 50,
+          weapons: ['light_sword', 'seraph_blaster', 'cherub_cannon'],
+          currentWeapon: 'seraph_blaster',
+          ammo: {
+            'seraph_blaster': 50,
+            'cherub_cannon': 20
+          }
+        };
+        
+        this.enemies = [];
+        this.projectiles = [];
+        this.pickups = [];
+        this.level = 1;
+        this.score = 0;
+        this.gameActive = false;
+        
+        // Controls
+        this.keys = {};
+        this.mouseX = 0;
+        this.mouseY = 0;
+        
+        // Game assets
+        this.textures = {};
+        this.sounds = {};
+        this.levels = [];
+
+        this.setupControls();
+        this.loadAssets();
+        
+        // Start the game loop but wait for click to activate
+        this.gameLoop();
+        
+        // Add click to start
+        this.canvas.addEventListener('click', () => {
+          if (!this.gameActive) {
+            this.gameActive = true;
+            this.startGame();
+          }
+        });
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+          this.width = this.canvas.width = window.innerWidth;
+          this.height = this.canvas.height = window.innerHeight;
+        });
+      }
+      
+      setupControls() {
+        window.addEventListener('keydown', (e) => this.keys[e.key] = true);
+        window.addEventListener('keyup', (e) => this.keys[e.key] = false);
+        window.addEventListener('mousemove', (e) => {
+          this.mouseX = e.clientX;
+          this.mouseY = e.clientY;
+          // Update player angle based on mouse position
+          this.player.angle = Math.atan2(this.mouseY - this.height / 2, this.mouseX - this.width / 2);
+        });
+        
+        window.addEventListener('click', () => {
+          if (this.gameActive) {
+            this.fireWeapon();
+          }
+        });
+      }
+      
+      loadAssets() {
+        // Enemy types
+        this.enemyTypes = {
+          'fallen_angel': {
+            health: 100,
+            damage: 10,
+            speed: 2,
+            attackRange: 300,
+            attackSpeed: 1.5,
+            description: "Once a guardian of the sacred realm, now corrupted by the rebellion."
+          },
+          'cherub_rebel': {
+            health: 150,
+            damage: 15,
+            speed: 1.5,
+            attackRange: 200,
+            attackSpeed: 2,
+            description: "Formerly pure beings of light, now twisted into vengeful spirits."
+          },
+          'arch_betrayer': {
+            health: 500,
+            damage: 30,
+            speed: 1,
+            attackRange: 400,
+            attackSpeed: 3,
+            description: "A high-ranking celestial who betrayed the divine order. Extremely dangerous."
+          }
+        };
+        
+        // Weapon types
+        this.weaponTypes = {
+          'light_sword': {
+            damage: 30,
+            range: 100,
+            cooldown: 0.5,
+            ammoType: null, // Melee weapon doesn't need ammo
+            description: "A blade forged from pure divine light. Effective in close combat."
+          },
+          'seraph_blaster': {
+            damage: 25,
+            range: 500,
+            cooldown: 0.3,
+            ammoType: 'light_essence',
+            description: "Standard-issue weapon for celestial guardians. Fires concentrated beams of holy energy."
+          },
+          'cherub_cannon': {
+            damage: 75,
+            range: 400,
+            cooldown: 1.5,
+            ammoType: 'divine_power',
+            description: "Heavy weapon that launches orbs of concentrated divine judgment."
+          }
+        };
+        
+        // Pickup types
+        this.pickupTypes = {
+          'divine_essence': {
+            effect: 'health',
+            amount: 25,
+            description: "Rejuvenating essence that restores your celestial form."
+          },
+          'ethereal_armor': {
+            effect: 'armor',
+            amount: 50,
+            description: "Protective aura that shields against corruption."
+          },
+          'light_essence': {
+            effect: 'ammo',
+            ammoType: 'seraph_blaster',
+            amount: 30,
+            description: "Concentrated light energy for your Seraph Blaster."
+          },
+          'divine_power': {
+            effect: 'ammo',
+            ammoType: 'cherub_cannon',
+            amount: 10,
+            description: "Potent divine energy cells for the Cherub Cannon."
+          }
+        };
+        
+        // Define levels
+        this.levels = [
+          {
+            name: "The Gates of Paradise",
+            description: "Once the welcoming entrance to heaven, now a battleground.",
+            enemies: ['fallen_angel', 'cherub_rebel'],
+            boss: null
+          },
+          {
+            name: "The Celestial Gardens",
+            description: "Sacred grounds now tainted by conflict.",
+            enemies: ['fallen_angel', 'cherub_rebel'],
+            boss: null
+          },
+          {
+            name: "Throne Room Approach",
+            description: "The path to divine authority, heavily contested.",
+            enemies: ['fallen_angel', 'cherub_rebel', 'arch_betrayer'],
+            boss: 'arch_betrayer'
+          }
+        ];
+      }
+      
+      startGame() {
+        this.loadLevel(this.level);
+      }
+      
+      loadLevel(levelIndex) {
+        const level = this.levels[levelIndex - 1];
+        console.log(`Loading level: ${level.name}`);
+        
+        // Clear existing entities
+        this.enemies = [];
+        this.projectiles = [];
+        this.pickups = [];
+        
+        // Spawn enemies based on level definition
+        for (let i = 0; i < 10 + (levelIndex * 5); i++) {
+          const enemyType = level.enemies[Math.floor(Math.random() * level.enemies.length)];
+          this.spawnEnemy(enemyType);
+        }
+        
+        // Spawn boss if the level has one
+        if (level.boss) {
+          this.spawnBoss(level.boss);
+        }
+        
+        // Spawn some pickups
+        for (let i = 0; i < 5 + levelIndex; i++) {
+          const pickupTypes = Object.keys(this.pickupTypes);
+          const pickupType = pickupTypes[Math.floor(Math.random() * pickupTypes.length)];
+          this.spawnPickup(pickupType);
+        }
+      }
+      
+      spawnEnemy(type) {
+        // Place enemy at a random position away from the player
+        let x, y;
+        do {
+          x = Math.random() * this.width;
+          y = Math.random() * this.height;
+        } while (Math.sqrt(Math.pow(x - this.player.x, 2) + Math.pow(y - this.player.y, 2)) < 300);
+        
+        this.enemies.push({
+          type: type,
+          x: x,
+          y: y,
+          health: this.enemyTypes[type].health,
+          angle: Math.random() * Math.PI * 2,
+          lastAttack: 0
+        });
+      }
+      
+      spawnBoss(type) {
+        this.enemies.push({
+          type: type,
+          x: this.width / 2,
+          y: 100,
+          health: this.enemyTypes[type].health * 2,
+          angle: Math.PI,
+          lastAttack: 0,
+          isBoss: true
+        });
+      }
+      
+      spawnPickup(type) {
+        this.pickups.push({
+          type: type,
+          x: Math.random() * this.width,
+          y: Math.random() * this.height
+        });
+      }
+      
+      fireWeapon() {
+        const weapon = this.weaponTypes[this.player.currentWeapon];
+        
+        // Check if weapon needs ammo and player has it
+        if (weapon.ammoType && this.player.ammo[this.player.currentWeapon] <= 0) {
+          console.log("Out of ammo!");
+          return;
+        }
+        
+        // Reduce ammo if needed
+        if (weapon.ammoType) {
+          this.player.ammo[this.player.currentWeapon]--;
+        }
+        
+        // For melee weapons, check for enemies in range
+        if (this.player.currentWeapon === 'light_sword') {
+          for (let enemy of this.enemies) {
+            const distance = Math.sqrt(Math.pow(enemy.x - this.player.x, 2) + Math.pow(enemy.y - this.player.y, 2));
+            
+            // Check if enemy is in range and roughly in front of player
+            const angleToEnemy = Math.atan2(enemy.y - this.player.y, enemy.x - this.player.x);
+            const angleDiff = Math.abs(this.normalizeAngle(angleToEnemy - this.player.angle));
+            
+            if (distance <= weapon.range && angleDiff <= Math.PI / 3) {
+              enemy.health -= weapon.damage;
+              console.log(`Melee hit on ${enemy.type}! Remaining health: ${enemy.health}`);
+              
+              // Check if enemy is defeated
+              if (enemy.health <= 0) {
+                this.defeatEnemy(enemy);
+              }
+            }
+          }
+        } else {
+          // For ranged weapons, create a projectile
+          this.projectiles.push({
+            x: this.player.x,
+            y: this.player.y,
+            angle: this.player.angle,
+            speed: 10,
+            damage: weapon.damage,
+            range: weapon.range,
+            distanceTraveled: 0,
+            weaponType: this.player.currentWeapon
+          });
+        }
+      }
+      
+      defeatEnemy(enemy) {
+        // Remove enemy from array
+        const index = this.enemies.indexOf(enemy);
+        if (index !== -1) {
+          this.enemies.splice(index, 1);
+        }
+        
+        // Update score
+        this.score += enemy.isBoss ? 1000 : 100;
+        
+        // Chance to spawn a pickup
+        if (Math.random() < 0.3) {
+          const pickupTypes = Object.keys(this.pickupTypes);
+          const pickupType = pickupTypes[Math.floor(Math.random() * pickupTypes.length)];
+          this.pickups.push({
+            type: pickupType,
+            x: enemy.x,
+            y: enemy.y
+          });
+        }
+        
+        // Check if level is complete
+        if (this.enemies.length === 0) {
+          this.completeLevel();
+        }
+      }
+      
+      completeLevel() {
+        console.log(`Level ${this.level} complete!`);
+        this.level++;
+        
+        if (this.level <= this.levels.length) {
+          setTimeout(() => {
+            alert(`Level ${this.level-1} complete! Moving to ${this.levels[this.level-1].name}`);
+            this.loadLevel(this.level);
+          }, 500);
+        } else {
+          setTimeout(() => {
+            alert("You have won! You have restored order to the celestial realm.");
+            this.level = 1;
+            this.score = 0;
+            this.player.health = 100;
+            this.player.armor = 50;
+            this.gameActive = false;
+          }, 500);
+        }
+      }
+      
+      update() {
+        if (!this.gameActive) {
+          return;
+        }
+        
+        this.updatePlayer();
+        this.updateEnemies();
+        this.updateProjectiles();
+        this.checkPickups();
+      }
+      
+      updatePlayer() {
+        // Movement speed
+        const speed = 5;
+        
+        // Handle movement with WASD or arrow keys
+        if (this.keys['w'] || this.keys['ArrowUp']) {
+          this.player.y -= speed;
+        }
+        if (this.keys['s'] || this.keys['ArrowDown']) {
+          this.player.y += speed;
+        }
